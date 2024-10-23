@@ -1,0 +1,4 @@
+SELECT x AS y
+FROM Z
+JOIN a
+ON b
