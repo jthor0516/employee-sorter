@@ -14,7 +14,7 @@ function menu() {
                 'view employees',
                 'add departments',
                 'add roles',
-                'add employees',
+                'add employee',
                 'update employee role'
             ]
         }
@@ -34,6 +34,12 @@ function menu() {
         else if (response.action === 'add roles') {
             addRole();
         }
+        else if (response.action === 'add employee') {
+            addEmployee();
+        }
+        else if (response.action === 'update employee role') {
+            updateEmployee();
+        }
     });
 }
 async function viewDepartments() {
@@ -52,37 +58,125 @@ async function viewEmployees() {
     menu();
 }
 async function addDepartment() {
-    const answers = await inquirer.prompt({ type: 'input',
-        name: 'newDept',
-        message: 'type the department you want to add'
-    });
-    await pool.query('INSERT INTO department (dept_name) values ($1)', [answers.newDept]);
-    console.log('your department has been added');
-    menu();
+    try {
+        const answers = await inquirer.prompt({
+            type: 'input',
+            name: 'newDept',
+            message: 'type the department you want to add'
+        });
+        await pool.query('INSERT INTO department (dept_name) values ($1)', [answers.newDept]);
+        console.log('your department has been added');
+        menu();
+    }
+    catch (err) {
+        console.error('Error adding department', err);
+        menu();
+    }
 }
 async function addRole() {
-    const { rows } = await pool.query('SELECT * FROM DEPARTMENT');
-    const departments = rows.map(department => ({ name: department.dept_name, value: department.id }));
-    const answers = await inquirer.prompt([
-        { type: 'input',
-            name: 'newRole',
-            message: 'type the role you want to add'
-        },
-        {
-            type: 'input',
-            name: 'newSalary',
-            message: 'What is the new role salary?'
-        },
-        {
-            type: 'list',
-            name: 'deptID',
-            message: 'Which department is this role?',
-            choices: departments
-        }
-    ]);
-    await pool.query('INSERT INTO role (title, salary, dept_id) values ($1, $2, $3)', [answers.newRole, answers.newSalary, answers.deptID]);
-    console.log('your role has been added');
-    menu();
+    const client = await pool.connect();
+    const { rows } = await pool.query('SELECT * FROM department');
+    try {
+        const departments = rows.map(department => ({ name: department.dept_name, value: department.id }));
+        const answers = await inquirer.prompt([
+            {
+                type: 'input',
+                name: 'newRole',
+                message: 'type the role you want to add'
+            },
+            {
+                type: 'input',
+                name: 'newSalary',
+                message: 'What is the new role salary?'
+            },
+            {
+                type: 'list',
+                name: 'deptID',
+                message: 'Which department is this role?',
+                choices: departments
+            }
+        ]);
+        const query = 'INSERT INTO role (title, salary, dept_id) values ($1, $2, $3)';
+        const values = [answers.newRole, answers.newSalary, answers.deptID];
+        const newRole = await client.query(query, values);
+        console.table(newRole.rows);
+        console.log('your role has been added');
+        menu();
+    }
+    catch (err) {
+        console.error('Error creating role', err);
+        menu();
+    }
+}
+async function addEmployee() {
+    const client = await pool.connect();
+    const { rows } = await pool.query('SELECT * FROM role');
+    try {
+        const employeeList = await client.query('Select * FROM employee');
+        const roles = rows.map(role => ({ name: role.title, value: role.id }));
+        console.table(employeeList.rows);
+        const answers = await inquirer.prompt([
+            {
+                type: 'input',
+                name: 'newFirst',
+                message: 'type the first name of the employee you want to add'
+            },
+            {
+                type: 'input',
+                name: 'newLast',
+                message: 'type the last name of the employee you want to add'
+            },
+            {
+                type: 'list',
+                name: 'roleID',
+                message: `What is the new employee's role?`,
+                choices: roles
+            },
+            {
+                type: 'input',
+                name: 'ManagerID',
+                message: 'Enter a manager ID from the above table',
+            }
+        ]);
+        const query = 'INSERT INTO employee (first_name, last_name, role_id, manager_id) values ($1, $2, $3, $4)';
+        const values = [answers.newFirst, answers.newLast, answers.roleID, answers.ManagerID];
+        await client.query(query, values);
+        console.log('new employee has been added');
+        menu();
+    }
+    catch (err) {
+        console.error('Error creating employee', err);
+        menu();
+    }
+}
+async function updateEmployee() {
+    const client = await pool.connect();
+    const { rows } = await pool.query('SELECT * FROM employee');
+    try {
+        const employees = rows.map(employee => ({ name: `${employee.first_name} ${employee.last_name}`, value: employee.id }));
+        await inquirer.prompt([
+            {
+                name: 'employee',
+                message: 'Which employee to update?',
+                type: 'list',
+                choices: employees
+            },
+            {
+                type: 'input',
+                name: 'newRole',
+                message: 'Enter new role ID'
+            }
+        ])
+            .then(async (response) => {
+            client.query(`UPDATE employee FROM SET role_id = ${response.newRole} WHERE id = ${response.employee} RETURNING *`, (_err, _result) => {
+                console.log('Employee updated successfully');
+            });
+        });
+    }
+    catch (err) {
+        console.error('Error updating employee', err);
+        menu();
+    }
 }
 menu();
 // let departmentList:choicesArray [] = []
